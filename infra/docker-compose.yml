@@ -54,6 +54,8 @@ services:
       dockerfile: infra/Dockerfile.detector
     container_name: stream_detector
     restart: always
+    env_file:
+      - ../.env
     volumes:
       - ../data:/app/data:ro
       - ../config:/app/config:ro

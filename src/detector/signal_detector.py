@@ -6,7 +6,9 @@ import os
 import requests
 import json
 import numpy as np
+import logging
 from datetime import datetime, timedelta
+from src.notify.telegram_bot import send_telegram_message
 
 # === 설정 ===
 DUCK_PATH = os.getenv("DB_PATH", "data/analytics.db")
@@ -19,6 +21,8 @@ DELTA_RATIO = 0.3           # 동적 델타 비율 (30%)
 GROWTH_THRESHOLD = 1.5      # 1.5배 (단기 급등)
 SEASONAL_THRESHOLD = 1.2    # 1.2배 (장기 추세 대비)
 COOLDOWN_MINUTES = 30       # 재알림 금지
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 def get_pg_conn():
     return psycopg2.connect(PG_DSN)
@@ -215,6 +219,17 @@ def detect_spikes():
                     """, (platform, cat, cause, round(cur_view/seasonal_base, 2), json.dumps(event_detail)))
                     conn.commit()
                     conn.close()
+
+                    top_streamer_name = clue_list[0].get("name", "Unknown") if clue_list else "Unknown"
+                    msg = (
+                        f"🚨 **[급등 감지] {platform}**\n"
+                        f"카테고리: `{cat}`\n"
+                        f"현재 시청자: {cur_view:,}명\n"
+                        f"증가량: +{actual_delta:,}명\n"
+                        f"핵심 원인: {top_streamer_name}"
+                    )
+                    send_telegram_message(msg)
+                    logging.info("🚨 [Telegram] %s 알림 전송 완료", cat)
                     
                     # Agent 호출 (Fire & Forget)
                     # requests.post(AGENT_URL, json={
