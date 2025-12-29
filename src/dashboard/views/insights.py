@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from utils.db import get_daily_category_top, get_king_of_streamers, get_new_categories, get_volatility_metrics, get_flash_categories
+from utils.ui import dataframe_stretch
 
 def render_insights_page():
     st.title("🏆 Daily Insights")
@@ -17,12 +18,12 @@ def render_insights_page():
             st.subheader(f"🌲 SOOP Top 10")
             soop_top = df_top[df_top['platform']=='SOOP'].head(10).reset_index(drop=True)
             soop_top.index += 1
-            st.dataframe(soop_top[['category_name', 'avg_viewers', 'peak_viewers']], width="stretch")
+            dataframe_stretch(soop_top[['category_name', 'avg_viewers', 'peak_viewers']])
         with c2:
             st.subheader(f"🟢 CHZZK Top 10")
             chzzk_top = df_top[df_top['platform']=='CHZZK'].head(10).reset_index(drop=True)
             chzzk_top.index += 1
-            st.dataframe(chzzk_top[['category_name', 'avg_viewers', 'peak_viewers']], width="stretch")
+            dataframe_stretch(chzzk_top[['category_name', 'avg_viewers', 'peak_viewers']])
     else:
         st.warning("데이터 수집 중...")
 
@@ -42,7 +43,7 @@ def render_insights_page():
         m2.metric("CHZZK 반짝 이슈", f"{cnt_chzzk} 건")
         
         # [수정] 기여자(Contributor) 컬럼 표시
-        st.dataframe(
+        dataframe_stretch(
             df_flash.head(20).rename(columns={
                 'peak_viewers': '최고(Past)',
                 'peak_contributor': '최고점 기여 스트리머', # [NEW]
@@ -50,8 +51,7 @@ def render_insights_page():
                 'current_broadcaster': '현재 방송중',     # [NEW]
                 'active_days': '유지(일)'
             })[['platform', 'category_name', '최고(Past)', '최고점 기여 스트리머', '현재(Now)', '현재 방송중', '유지(일)']],
-            hide_index=True, 
-            width="stretch"
+            hide_index=True
         )
     else:
         st.write("조건에 맞는 카테고리가 없습니다. (데이터 누적 필요)")
@@ -73,13 +73,13 @@ def render_insights_page():
             soop_king = df_king[df_king['platform']=='SOOP'].head(10).reset_index(drop=True)
             soop_king.index += 1
             # [수정] timestamp 대신 포맷팅된 when 사용
-            st.dataframe(soop_king[['streamer', 'category', 'viewers', 'when']], width="stretch")
+            dataframe_stretch(soop_king[['streamer', 'category', 'viewers', 'when']])
             
         with k2:
             st.subheader("🟢 CHZZK Kings")
             chzzk_king = df_king[df_king['platform']=='CHZZK'].head(10).reset_index(drop=True)
             chzzk_king.index += 1
-            st.dataframe(chzzk_king[['streamer', 'category', 'viewers', 'when']], width="stretch")
+            dataframe_stretch(chzzk_king[['streamer', 'category', 'viewers', 'when']])
     else:
         st.write("스트리머 정보 분석 중...")
     
@@ -94,10 +94,10 @@ def render_insights_page():
         n1, n2 = st.columns(2)
         with n1:
             st.subheader("SOOP New")
-            st.dataframe(df_new[df_new['platform']=='SOOP'], hide_index=True, width="stretch")
+            dataframe_stretch(df_new[df_new['platform']=='SOOP'], hide_index=True)
         with n2:
             st.subheader("CHZZK New")
-            st.dataframe(df_new[df_new['platform']=='CHZZK'], hide_index=True, width="stretch")
+            dataframe_stretch(df_new[df_new['platform']=='CHZZK'], hide_index=True)
             
         if len(df_new) > 10:
             st.caption("※ 초기 데이터 수집 단계에서는 기존 카테고리도 'New'로 인식될 수 있습니다. (7일 후 안정화됨)")
@@ -119,19 +119,19 @@ def render_insights_page():
             with s1:
                 st.subheader("SOOP 콘크리트 Top 20")
                 df_s_soop = df_vol[df_vol['platform']=='SOOP'].sort_values('volatility_index', ascending=True).head(20)
-                st.dataframe(df_s_soop[['category_name', 'avg_v', 'volatility_index']], hide_index=True, width="stretch")
+                dataframe_stretch(df_s_soop[['category_name', 'avg_v', 'volatility_index']], hide_index=True)
             with s2:
                 st.subheader("CHZZK 콘크리트 Top 20")
                 df_s_chzzk = df_vol[df_vol['platform']=='CHZZK'].sort_values('volatility_index', ascending=True).head(20)
-                st.dataframe(df_s_chzzk[['category_name', 'avg_v', 'volatility_index']], hide_index=True, width="stretch")
+                dataframe_stretch(df_s_chzzk[['category_name', 'avg_v', 'volatility_index']], hide_index=True)
 
         with tab_volatile:
             v1, v2 = st.columns(2)
             with v1:
                 st.subheader("SOOP 롤러코스터 Top 20")
                 df_v_soop = df_vol[df_vol['platform']=='SOOP'].sort_values('volatility_index', ascending=False).head(20)
-                st.dataframe(df_v_soop[['category_name', 'avg_v', 'volatility_index']], hide_index=True, width="stretch")
+                dataframe_stretch(df_v_soop[['category_name', 'avg_v', 'volatility_index']], hide_index=True)
             with v2:
                 st.subheader("CHZZK 롤러코스터 Top 20")
                 df_v_chzzk = df_vol[df_vol['platform']=='CHZZK'].sort_values('volatility_index', ascending=False).head(20)
-                st.dataframe(df_v_chzzk[['category_name', 'avg_v', 'volatility_index']], hide_index=True, width="stretch")
+                dataframe_stretch(df_v_chzzk[['category_name', 'avg_v', 'volatility_index']], hide_index=True)

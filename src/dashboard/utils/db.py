@@ -2,6 +2,7 @@ import pandas as pd
 import duckdb
 import os
 import json
+import time
 from sqlalchemy import create_engine
 from datetime import datetime, timedelta
 
@@ -12,8 +13,17 @@ PG_PASS = os.getenv('POSTGRES_PASSWORD', 'password')
 PG_DB = os.getenv('POSTGRES_DB', 'streampulse_meta')
 PG_URL = f"postgresql://{PG_USER}:{PG_PASS}@postgres:5432/{PG_DB}"
 
-def get_connection():
-    return duckdb.connect(DUCK_PATH, read_only=True)
+def get_connection(retries=3, backoff=0.2):
+    last_err = None
+    for attempt in range(retries):
+        try:
+            return duckdb.connect(DUCK_PATH, read_only=True)
+        except Exception as e:
+            last_err = e
+            if attempt < retries - 1:
+                time.sleep(backoff * (2 ** attempt))
+                continue
+            raise last_err
 
 def get_live_traffic():
     """실시간 트래픽 조회 (RANK 기반 - 누락 방지 로직 적용)"""

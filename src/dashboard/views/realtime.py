@@ -4,6 +4,7 @@ import json
 import requests
 import time
 from utils.db import get_live_traffic, get_events, get_trend_data
+from utils.ui import plotly_chart_stretch, dataframe_stretch
 
 AGENT_URL = "http://agent:8000/analyze"
 
@@ -37,10 +38,10 @@ def render_realtime_page():
             c1, c2 = st.columns([1,1])
             with c1:
                 fig = px.pie(df_live, values='viewers', names='platform', hole=0.4, color='platform', color_discrete_map={'SOOP':'#19CE60', 'CHZZK':'#00FFA3'})
-                st.plotly_chart(fig, width="stretch")
+                plotly_chart_stretch(fig)
             with c2:
                 st.subheader("Real-time Top 10")
-                st.dataframe(df_live[['platform', 'category_name', 'viewers']].head(10), width="stretch", hide_index=True)
+                dataframe_stretch(df_live[['platform', 'category_name', 'viewers']].head(10), hide_index=True)
 
         st.divider()
         st.header("🧠 Intelligence Reports")
@@ -101,5 +102,5 @@ def render_realtime_page():
                 df_trend = get_trend_data(sel_category, hours=hours_val)
                 if not df_trend.empty:
                     fig_line = px.line(df_trend, x='ts_utc', y='viewers', color='platform', markers=True, title=f"'{sel_category}' Trend", color_discrete_map={'SOOP':'#19CE60', 'CHZZK':'#00FFA3'})
-                    st.plotly_chart(fig_line, width="stretch")
+                    plotly_chart_stretch(fig_line)
                 else: st.warning("데이터 없음")
