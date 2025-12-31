@@ -44,6 +44,7 @@ def init_db():
                 cause_detail JSONB
             );
             CREATE INDEX IF NOT EXISTS idx_cool ON signal_events (platform, category_name, created_at);
+            CREATE INDEX IF NOT EXISTS idx_signal_events_created_at ON signal_events (created_at DESC);
         """)
         conn.commit()
         conn.close()

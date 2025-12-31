@@ -63,15 +63,20 @@ def _parse_top_streamers(value):
 def get_live_traffic():
     con = _get_connection()
     try:
-        query = """
-            SELECT platform, category_name, viewers, top_streamers_detail, ts_utc
-            FROM (
-                SELECT *,
-                    DENSE_RANK() OVER (PARTITION BY platform ORDER BY ts_utc DESC) as rnk
+        since = datetime.utcnow() - timedelta(hours=24)
+        query = f"""
+            WITH latest AS (
+                SELECT platform, MAX(ts_utc) AS max_ts
                 FROM traffic_category_snapshot
-            ) sub
-            WHERE rnk = 1
-            ORDER BY viewers DESC
+                WHERE ts_utc >= CAST('{since}' AS TIMESTAMP)
+                GROUP BY platform
+            )
+            SELECT t.platform, t.category_name, t.viewers, t.top_streamers_detail, t.ts_utc
+            FROM traffic_category_snapshot t
+            JOIN latest l
+              ON t.platform = l.platform
+             AND t.ts_utc = l.max_ts
+            ORDER BY t.viewers DESC
         """
         df = con.execute(query).df()
         if not df.empty:
