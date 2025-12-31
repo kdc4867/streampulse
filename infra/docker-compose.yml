@@ -47,6 +47,17 @@ services:
       - DB_PATH=/app/data/analytics.db
       - PYTHONUNBUFFERED=1
       - TZ=Asia/Seoul
+  
+  web:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.web
+    container_name: stream_web
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - api
 
   api:
     build:
