@@ -130,20 +130,20 @@ def detect_spikes():
                              AND CAST('{last_ts}' AS TIMESTAMP)
             GROUP BY platform, category_name
         ),
-        -- 3. 장기 베이스라인 A (7일 전)
+        -- 3. 장기 베이스라인 A (7일 전, 동일 시간대 ±2시간)
         seasonal_7d AS (
             SELECT platform, category_name, AVG(viewers) as avg_7d
             FROM traffic_category_snapshot
-            WHERE ts_utc BETWEEN CAST('{last_ts}' AS TIMESTAMP) - INTERVAL 169 HOUR 
-                             AND CAST('{last_ts}' AS TIMESTAMP) - INTERVAL 167 HOUR
+            WHERE ts_utc BETWEEN CAST('{last_ts}' AS TIMESTAMP) - INTERVAL 170 HOUR 
+                             AND CAST('{last_ts}' AS TIMESTAMP) - INTERVAL 166 HOUR
             GROUP BY platform, category_name
         ),
-        -- 4. 장기 베이스라인 B (24시간 전 - Fallback용)
+        -- 4. 장기 베이스라인 B (전날 동일 시간대 ±2시간)
         seasonal_24h AS (
             SELECT platform, category_name, AVG(viewers) as avg_24h
             FROM traffic_category_snapshot
-            WHERE ts_utc BETWEEN CAST('{last_ts}' AS TIMESTAMP) - INTERVAL 25 HOUR 
-                             AND CAST('{last_ts}' AS TIMESTAMP) - INTERVAL 23 HOUR
+            WHERE ts_utc BETWEEN CAST('{last_ts}' AS TIMESTAMP) - INTERVAL 26 HOUR 
+                             AND CAST('{last_ts}' AS TIMESTAMP) - INTERVAL 22 HOUR
             GROUP BY platform, category_name
         )
         SELECT 
@@ -179,7 +179,7 @@ def detect_spikes():
             # --- [Logic] 스파이크 판별 ---
             # 1. 동적 델타 임계값
             dynamic_delta_req = max(MIN_ABSOLUTE_DELTA, seasonal_base * DELTA_RATIO)
-            actual_delta = cur_view - seasonal_base
+            actual_delta = max(0, int(round(cur_view - seasonal_base)))
             
             growth_ratio = cur_view / med_60m if med_60m > 0 else 0.
             # 2. 조건 검사
@@ -205,8 +205,8 @@ def detect_spikes():
                 event_detail = {
                     "stats": {
                         "current": cur_view, 
-                        "baseline_season": int(seasonal_base),
-                        "delta": int(actual_delta)
+                        "baseline_season": int(round(seasonal_base)),
+                        "delta": actual_delta
                     },
                     "clues": clue_list[:3] # 상위 3명만 전달
                 }
@@ -217,7 +217,7 @@ def detect_spikes():
                     cur.execute("""
                         INSERT INTO signal_events (platform, category_name, event_type, growth_rate, cause_detail)
                         VALUES (%s, %s, %s, %s, %s)
-                    """, (platform, cat, cause, round(cur_view/seasonal_base, 2), json.dumps(event_detail)))
+                    """, (platform, cat, cause, round(cur_view / seasonal_base, 2), json.dumps(event_detail)))
                     conn.commit()
                     conn.close()
 
@@ -227,6 +227,7 @@ def detect_spikes():
                         f"카테고리: `{cat}`\n"
                         f"현재 시청자: {cur_view:,}명\n"
                         f"증가량: +{actual_delta:,}명\n"
+                        f"기준 시청자: {int(round(seasonal_base)):,}명\n"
                         f"핵심 원인: {top_streamer_name}"
                     )
                     send_telegram_message(msg)

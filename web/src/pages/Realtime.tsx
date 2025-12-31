@@ -98,20 +98,44 @@ export default function Realtime() {
 
       <div className="card col-span-1 row-span-2">
         <div className="card-title">🚨 실시간 급등 감지</div>
+        <div className="card-sub">기준: 전날 동일 시간 ±2시간 평균</div>
         <div className="spike-list">
           {events.length === 0 ? (
             <p className="empty-text">감지된 특이사항 없음</p>
           ) : (
-            events.map((ev) => (
-              <div key={ev.event_id} className="spike-item">
-                <div className="spike-header">
-                  <span>{ev.platform}</span>
-                  <span>+{Math.round(ev.growth_rate * 100)}%</span>
+            events.map((ev) => {
+              let details: Record<string, unknown> = {};
+              if (typeof ev.cause_detail === "string") {
+                try {
+                  details = JSON.parse(ev.cause_detail || "{}");
+                } catch {
+                  details = {};
+                }
+              } else if (ev.cause_detail) {
+                details = ev.cause_detail as Record<string, unknown>;
+              }
+              const stats = details?.stats || {};
+              const baseline =
+                typeof stats.baseline_season === "number" ? stats.baseline_season : null;
+              const current = typeof stats.current === "number" ? stats.current : null;
+              const growth = baseline && current
+                ? Math.round((current / baseline) * 100)
+                : Math.round((ev.growth_rate || 0) * 100);
+
+              return (
+                <div key={ev.event_id} className="spike-item">
+                  <div className="spike-header">
+                    <span>{ev.platform}</span>
+                    <span>+{growth}%</span>
+                  </div>
+                  <div className="spike-msg">{ev.category_name || "미분류"}</div>
+                  {baseline ? (
+                    <div className="spike-baseline">기준 {formatNumber(baseline)}명</div>
+                  ) : null}
+                  <div className="spike-time">{formatTimeShort(ev.created_at)} 감지</div>
                 </div>
-                <div className="spike-msg">{ev.category_name || "미분류"}</div>
-                <div className="spike-time">{formatTimeShort(ev.created_at)} 감지</div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>

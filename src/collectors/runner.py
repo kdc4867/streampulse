@@ -43,9 +43,9 @@ def job_basic_collection():
     logging.info("[Runner] === 수집 종료 ===")
 
 def job_health_check():
-    """4시간마다 생존 신고"""
+    """8시간마다 생존 신고"""
     logging.info("[System] 🏥 정기 생존 신고")
-    send_telegram_message("🏥 **[StreamPulse]** 시스템 정상 가동 중입니다.\n(4시간 주기 점검)")
+    send_telegram_message("🏥 **[StreamPulse]** 시스템 정상 가동 중입니다.\n(8시간 주기 점검)")
 
 def run_scheduler():
     logging.info("🚀 [StreamPulse V3] Collector 시작 (5분 주기)")
@@ -56,9 +56,9 @@ def run_scheduler():
     # 시작 즉시 실행
     job_basic_collection()
 
-    # 5분 주기 스케줄 + 4시간 주기 생존 체크
+    # 5분 주기 스케줄 + 8시간 주기 생존 체크
     schedule.every(5).minutes.do(job_basic_collection)
-    schedule.every(4).hours.do(job_health_check)
+    schedule.every(8).hours.do(job_health_check)
 
     while True:
         schedule.run_pending()
