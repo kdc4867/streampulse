@@ -18,7 +18,7 @@ def get_events():
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/trend")
-def get_trend(category: str = Query(...), hours: int = Query(12, ge=1, le=168)):
+def get_trend(category: str = Query(...), hours: int = Query(12, ge=1, le=720)):
     try:
         return {"data": service.get_trend_data(category, hours)}
     except Exception as e:

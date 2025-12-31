@@ -1,24 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { getEvents, getLive, getTrend } from "../api";
+import { getEvents, getLive } from "../api";
 import DataTable from "../components/DataTable";
-import { EventItem, LiveTraffic, TrendPoint } from "../types";
+import { EventItem, LiveTraffic } from "../types";
 import { formatNumber, formatTimeShort } from "../utils";
-
-type TrendOption = { label: string; hours: number };
-
-const trendOptions: TrendOption[] = [
-  { label: "12시간", hours: 12 },
-  { label: "24시간", hours: 24 },
-  { label: "3일", hours: 72 },
-];
 
 export default function Realtime() {
   const [live, setLive] = useState<LiveTraffic[]>([]);
   const [events, setEvents] = useState<EventItem[]>([]);
-  const [trend, setTrend] = useState<TrendPoint[]>([]);
   const [loading, setLoading] = useState(true);
-  const [trendHours] = useState(trendOptions[0]);
 
   useEffect(() => {
     let mounted = true;
@@ -45,23 +34,6 @@ export default function Realtime() {
       mounted = false;
     };
   }, []);
-
-  useEffect(() => {
-    if (!live[0]?.category_name) return;
-    let mounted = true;
-    getTrend(live[0].category_name, trendHours.hours)
-      .then((res) => {
-        if (!mounted) return;
-        setTrend(res.data as TrendPoint[]);
-      })
-      .catch(() => {
-        if (!mounted) return;
-        setTrend([]);
-      });
-    return () => {
-      mounted = false;
-    };
-  }, [live, trendHours]);
 
   const totals = useMemo(() => {
     return live.reduce(
@@ -140,32 +112,7 @@ export default function Realtime() {
         </div>
       </div>
 
-      <div className="card col-span-2 row-span-2">
-        <div className="card-title">
-          📊 카테고리 트렌드 (1위: {live[0]?.category_name || "-"})
-        </div>
-        <div className="chart-wrap">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={trend}>
-              <XAxis dataKey="ts_utc" tickFormatter={formatTimeShort} />
-              <YAxis tickFormatter={formatNumber} width={40} />
-              <Tooltip
-                formatter={(val: number) => formatNumber(val)}
-                labelFormatter={formatTimeShort}
-              />
-              <Line
-                type="monotone"
-                dataKey="viewers"
-                stroke="var(--primary)"
-                strokeWidth={3}
-                dot={false}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      <div className="card col-span-1 row-span-2">
+      <div className="card col-span-3 row-span-2">
         <div className="card-title">🔥 실시간 Top 10</div>
         <DataTable
           columns={[
