@@ -39,7 +39,12 @@ export default function App() {
         </header>
         
         <div className="content-scroll">
-          {activeTab === "realtime" ? <Realtime /> : <Insights />}
+          <div className={activeTab === "realtime" ? "view active" : "view"}>
+            <Realtime />
+          </div>
+          <div className={activeTab === "insights" ? "view active" : "view"}>
+            <Insights />
+          </div>
         </div>
       </main>
     </div>

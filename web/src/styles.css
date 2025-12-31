@@ -197,6 +197,15 @@ body {
   padding: 32px;
 }
 
+.view {
+  display: none;
+  height: 100%;
+}
+
+.view.active {
+  display: block;
+}
+
 /* === Bento Grid (핵심) === */
 .bento-grid {
   display: grid;
