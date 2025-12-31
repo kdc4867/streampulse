@@ -198,7 +198,17 @@ def detect_spikes():
 
                 # 4. 원인 분석 (Contribution)
                 cause, ratio, clue_list = calculate_contribution(cur_view, view_1h, top_cur, top_1h)
-                
+
+                # [보정] 유명 스트리머 유입으로 인한 급등 오탐 방지 (PERSON_ISSUE 기준 강화)
+                if cause == "PERSON_ISSUE":
+                    stricter_delta = max(1500, seasonal_base * 0.5)
+                    if growth_ratio < 2.0 or actual_delta < stricter_delta:
+                        print(
+                            f"⚠️ [PERSON 보정] {platform} {cat}: "
+                            f"growth={growth_ratio:.2f}, delta={int(actual_delta)} -> 기준 미달"
+                        )
+                        continue
+
                 print(f"🚨 [SPIKE] {platform} {cat}: {cur_view}명 (기여율: {ratio*100:.1f}% -> {cause})")
 
                 # 5. 기록 및 에이전트 요청
