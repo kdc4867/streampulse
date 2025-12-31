@@ -6,3 +6,5 @@ __pycache__/
 *.sql
 data/
 streampulse-key.pem
+.DS_Store
+node_modules/

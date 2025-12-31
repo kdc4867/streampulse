@@ -19,7 +19,17 @@ def job_basic_collection():
     # 1. SOOP 수집 (Top 5 포함)
     try:
         data_soop = soop.fetch_categories()
-        store.save_category_snapshot(data_soop)
+        # SOOP API가 일시적으로 빈/부분 데이터만 주는 경우가 있어, 이상치는 저장하지 않음.
+        soop_count = len(data_soop)
+        soop_total = sum(item.get("viewers", 0) for item in data_soop)
+        if soop_count < 50 or soop_total < 5000:
+            logging.warning(
+                "[Runner] SOOP 스냅샷 이상치 감지 (count=%s, total=%s) -> 저장 스킵",
+                soop_count,
+                soop_total,
+            )
+        else:
+            store.save_category_snapshot(data_soop)
     except Exception as e:
         logging.exception("[Runner] SOOP 수집 실패: %s", e)
 

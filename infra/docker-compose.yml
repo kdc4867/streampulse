@@ -47,6 +47,26 @@ services:
       - DB_PATH=/app/data/analytics.db
       - PYTHONUNBUFFERED=1
       - TZ=Asia/Seoul
+
+  api:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.api
+    container_name: stream_api
+    restart: always
+    ports:
+      - "8080:8080"
+    env_file:
+      - ../.env
+    volumes:
+      - ../data:/app/data:ro
+    environment:
+      - DB_PATH=/app/data/analytics.db
+      - POSTGRES_DB=streampulse_meta
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - PYTHONUNBUFFERED=1
+      - TZ=Asia/Seoul
   
   detector:
     build:
