@@ -6,7 +6,6 @@ import time
 from sqlalchemy import create_engine
 from datetime import datetime, timedelta
 
-# === 설정 ===
 DUCK_PATH = os.getenv("DB_PATH", "data/analytics.db")
 PG_USER = os.getenv('POSTGRES_USER', 'user')
 PG_PASS = os.getenv('POSTGRES_PASSWORD', 'password')
@@ -26,11 +25,10 @@ def get_connection(retries=3, backoff=0.2):
             raise last_err
 
 def get_live_traffic():
-    """실시간 트래픽 조회 (RANK 기반 - 누락 방지 로직 적용)"""
+    """실시간 트래픽 조회(RANK 기반, 누락 방지 로직 적용)"""
     try:
         con = get_connection()
-        # [수정] JOIN 방식 -> 윈도우 함수(RANK) 방식으로 변경
-        # 설명: 플랫폼별로 시간 역순으로 번호를 매겨서(rnk), 무조건 1등(최신) 데이터만 가져옴
+        # 플랫폼별 최신 스냅샷만 가져오는 쿼리
         query = """
             SELECT platform, category_name, viewers, top_streamers_detail, ts_utc
             FROM (
@@ -44,7 +42,6 @@ def get_live_traffic():
         df = con.execute(query).df()
         con.close()
         
-        # [디버깅용] 만약 한쪽 플랫폼이 없으면 로그 출력 (터미널 확인용)
         platforms = df['platform'].unique()
         if len(platforms) < 2:
             print(f"⚠️ [Dashboard Warning] 누락된 플랫폼이 있습니다. 현재 감지됨: {platforms}")
@@ -55,9 +52,9 @@ def get_live_traffic():
         return pd.DataFrame()
 
 def get_trend_data(category_name, hours=12):
-    # (기존 코드 유지)
     try:
         con = get_connection()
+        # 선택 카테고리의 시계열 추이 조회
         query = f"""
             SELECT ts_utc, platform, viewers, top_streamers_detail
             FROM traffic_category_snapshot
@@ -71,9 +68,9 @@ def get_trend_data(category_name, hours=12):
     except: return pd.DataFrame()
 
 def get_events():
-    # (기존 코드 유지)
     try:
         engine = create_engine(PG_URL)
+        # 최신 이벤트 20건
         query = "SELECT * FROM signal_events ORDER BY created_at DESC LIMIT 20"
         df = pd.read_sql(query, engine)
         return df
@@ -89,7 +86,7 @@ def get_flash_categories():
             return pd.DataFrame()
         last_ts = ts_check[0]
 
-        # [수정] ARG_MAX를 사용해 Peak일 때의 스트리머 정보(JSON)를 통째로 가져옴
+        # 최근 30일 내 피크 대비 급락한 카테고리 필터
         query = f"""
             WITH stats AS (
                 SELECT 
@@ -120,7 +117,6 @@ def get_flash_categories():
         df = con.execute(query).df()
         con.close()
         
-        # JSON 파싱해서 대표 스트리머 이름만 추출하는 후처리
         def extract_name(json_str):
             try:
                 if not json_str: return "-"
@@ -139,7 +135,6 @@ def get_flash_categories():
         return pd.DataFrame()
 
 def get_daily_category_top():
-    # (기존 코드 유지)
     try:
         con = get_connection()
         yesterday = datetime.utcnow() - timedelta(days=1)
@@ -158,11 +153,11 @@ def get_daily_category_top():
     except: return pd.DataFrame()
 
 def get_king_of_streamers():
-    """King of Streamers (시간 정보 포함)"""
+    """스트리머 최고 기록(시간 정보 포함)"""
     try:
         con = get_connection()
         yesterday = datetime.utcnow() - timedelta(days=1)
-        # [수정] ts_utc 추가 조회
+        # 최근 24시간 최고치만 집계할 원본 조회
         query = f"""
             SELECT platform, category_name, top_streamers_detail, ts_utc
             FROM traffic_category_snapshot 
@@ -179,10 +174,9 @@ def get_king_of_streamers():
                     if isinstance(details, str): details = json.loads(details)
                     if isinstance(details, list):
                         for d in details:
-                            # [수정] 카테고리가 비어있으면 대체 텍스트 삽입
                             cat_name = row['category_name']
                             if not cat_name or cat_name.strip() == "":
-                                cat_name = "[General/Talk]" # 임의의 라벨
+                                cat_name = "[General/Talk]"
 
                             streamer_list.append({
                                 "platform": row['platform'],
@@ -190,7 +184,7 @@ def get_king_of_streamers():
                                 "streamer": d.get('name', 'Unknown'),
                                 "title": d.get('title', ''),
                                 "viewers": int(d.get('viewers', 0)),
-                                "timestamp": row['ts_utc'] # 시간 정보 저장
+                                "timestamp": row['ts_utc']
                             })
                 except: continue
         
@@ -198,8 +192,6 @@ def get_king_of_streamers():
         
         df_streamers = pd.DataFrame(streamer_list)
         
-        # [수정] 같은 스트리머+카테고리 조합 중 최고 시청자를 찍은 '시간'까지 같이 가져옴
-        # idxmax()를 써서 최고 시청자 기록의 인덱스를 찾음
         idx = df_streamers.groupby(['platform', 'streamer', 'category'])['viewers'].idxmax()
         df_ranking = df_streamers.loc[idx].sort_values(by='viewers', ascending=False)
         
@@ -207,7 +199,6 @@ def get_king_of_streamers():
     except: return pd.DataFrame()
 
 def get_new_categories():
-    # (기존 코드 유지)
     try:
         con = get_connection()
         now = datetime.utcnow()
@@ -237,7 +228,6 @@ def get_new_categories():
     except: return pd.DataFrame()
 
 def get_volatility_metrics():
-    # (기존 코드 유지)
     try:
         con = get_connection()
         yesterday = datetime.utcnow() - timedelta(days=1)

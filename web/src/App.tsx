@@ -14,7 +14,6 @@ export default function App() {
 
   return (
     <div className="app-layout">
-      {/* Sidebar Navigation */}
       <nav className="sidebar">
         <div className="brand">
           <span>SP</span> StreamPulse
@@ -31,7 +30,6 @@ export default function App() {
         ))}
       </nav>
 
-      {/* Main Content Area */}
       <main className="main-content">
         <header className="top-bar">
           <h2 className="page-title">

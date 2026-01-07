@@ -7,7 +7,6 @@ def render_insights_page():
     st.title("🏆 Daily Insights")
     st.caption("Last Update: Real-time | Timezone: UTC")
     
-    # 1. Platform Top Categories
     st.header("1. ⚔️ Platform Top Categories")
     st.markdown("##### 💡 기준: 최근 24시간 `평균 시청자 수` (Average Viewers)")
     
@@ -29,7 +28,6 @@ def render_insights_page():
 
     st.divider()
     
-    # 2. Flash-in-the-pan (스트리머 정보 추가)
     st.header("2. 🌠 Flash-in-the-pan (반짝 카테고리)")
     st.info("최근 30일 내 `Peak 2,000명`을 넘겼으나, `5일 이내`에 식어버린 카테고리 (Top 20)")
     
@@ -42,13 +40,12 @@ def render_insights_page():
         m1.metric("SOOP 반짝 이슈", f"{cnt_soop} 건")
         m2.metric("CHZZK 반짝 이슈", f"{cnt_chzzk} 건")
         
-        # [수정] 기여자(Contributor) 컬럼 표시
         dataframe_stretch(
             df_flash.head(20).rename(columns={
                 'peak_viewers': '최고(Past)',
-                'peak_contributor': '최고점 기여 스트리머', # [NEW]
+                'peak_contributor': '최고점 기여 스트리머', # [신규]
                 'curr_viewers': '현재(Now)',
-                'current_broadcaster': '현재 방송중',     # [NEW]
+                'current_broadcaster': '현재 방송중',     # [신규]
                 'active_days': '유지(일)'
             })[['platform', 'category_name', '최고(Past)', '최고점 기여 스트리머', '현재(Now)', '현재 방송중', '유지(일)']],
             hide_index=True
@@ -58,13 +55,11 @@ def render_insights_page():
 
     st.divider()
 
-    # 3. King of Streamers (시간 추가)
     st.header("3. 👑 King of Streamers (Peak Viewers)")
     st.markdown("##### 💡 플랫폼별 시청자 수 1위~10위 (발생 시점 포함)")
     
     df_king = get_king_of_streamers()
     if not df_king.empty:
-        # 시간 포맷팅 (가독성을 위해 월-일 시:분 형태로 변환)
         df_king['when'] = pd.to_datetime(df_king['timestamp']).dt.strftime('%m-%d %H:%M')
         
         k1, k2 = st.columns(2)
@@ -72,7 +67,6 @@ def render_insights_page():
             st.subheader("🌲 SOOP Kings")
             soop_king = df_king[df_king['platform']=='SOOP'].head(10).reset_index(drop=True)
             soop_king.index += 1
-            # [수정] timestamp 대신 포맷팅된 when 사용
             dataframe_stretch(soop_king[['streamer', 'category', 'viewers', 'when']])
             
         with k2:
@@ -85,7 +79,6 @@ def render_insights_page():
     
     st.divider()
 
-    # 4. New Categories
     st.header("4. 🚀 New Categories")
     st.markdown("##### 💡 최근 7일간 기록이 없다가 `오늘 처음` 등장한 카테고리")
     
@@ -106,7 +99,6 @@ def render_insights_page():
 
     st.divider()
     
-    # 5. Stability vs Volatility
     st.header("5. 📉 Stability vs Volatility (Top 20)")
     st.markdown("##### 💡 변동성 지수 (낮을수록 콘크리트, 높을수록 롤러코스터)")
     

@@ -1,5 +1,4 @@
 services:
-  # 1. 메타데이터 DB (PostgreSQL)
   postgres:
     image: postgres:15-alpine
     container_name: stream_meta_db
@@ -15,22 +14,21 @@ services:
       - "5432:5432"
     restart: always
 
-  # 2. 데이터 수집기 (Collector) - ★ 여기가 추가됨
   collector:
     build:
-      context: ..                      # 중요: 프로젝트 루트(한 단계 위)를 빌드 컨텍스트로 지정
+      context: ..
       dockerfile: infra/Dockerfile.collector
     container_name: stream_collector
     restart: always
     env_file:
-      - ../.env                         # .env 파일 연동
+      - ../.env
     volumes:
-      - ../data:/app/data:rw           # 데이터 저장소 (쓰기 권한)
-      - ../config:/app/config:ro       # 설정 파일
-      - ../.env:/app/.env:ro           # API 키 (.env 파일 연동)
+      - ../data:/app/data:rw
+      - ../config:/app/config:ro
+      - ../.env:/app/.env:ro
     environment:
-      - DB_PATH=/app/data/analytics.db # 컨테이너 내부 DB 경로
-      - PYTHONUNBUFFERED=1            # 실시간 로그 출력을 위한 설정
+      - DB_PATH=/app/data/analytics.db
+      - PYTHONUNBUFFERED=1
       - TZ=Asia/Seoul
   
   dashboard:

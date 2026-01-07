@@ -10,12 +10,10 @@ import logging
 from datetime import datetime, timedelta
 from src.notify.telegram_bot import send_telegram_message
 
-# === 설정 ===
 DUCK_PATH = os.getenv("DB_PATH", "data/analytics.db")
 PG_DSN = f"host=postgres dbname={os.getenv('POSTGRES_DB', 'streampulse_meta')} user={os.getenv('POSTGRES_USER', 'user')} password={os.getenv('POSTGRES_PASSWORD', 'password')}"
 AGENT_URL = "http://agent:8000/analyze"
 
-# V3 확정 파라미터
 MIN_ABSOLUTE_DELTA = 1000   # 최소 증가량 (하한선)
 DELTA_RATIO = 0.3           # 동적 델타 비율 (30%)
 GROWTH_THRESHOLD = 1.5      # 1.5배 (단기 급등)
@@ -32,7 +30,6 @@ def init_db():
     try:
         conn = get_pg_conn()
         cur = conn.cursor()
-        # 이벤트 기록 테이블
         cur.execute("""
             CREATE TABLE IF NOT EXISTS signal_events (
                 event_id SERIAL PRIMARY KEY,
@@ -69,26 +66,26 @@ def check_cooldown(platform, category):
 
 def calculate_contribution(cur_view, past_view, cur_top_json, past_top_json):
     """
-    [원인 분석 핵심 로직] 증가분 기여율(Incremental Contribution) 계산
-    Formula: (Top5_Current_Sum - Top5_Past_Sum) / (Current_Total - Past_Total)
+    [원인 분석 핵심 로직] 증가분 기여율 계산
+    공식: (Top5_Current_Sum - Top5_Past_Sum) / (Current_Total - Past_Total)
     """
     try:
-        # JSON 파싱 및 Top5 합계 계산
         cur_list = json.loads(cur_top_json) if cur_top_json else []
         past_list = json.loads(past_top_json) if past_top_json else []
         
         cur_top_sum = sum([item.get('viewers', 0) for item in cur_list])
         past_top_sum = sum([item.get('viewers', 0) for item in past_list])
         
-        # 델타 계산
         total_delta = cur_view - past_view
         top_delta = cur_top_sum - past_top_sum
         
-        if total_delta <= 0: return "STRUCTURE_ISSUE", 0.0, cur_list # 하락/보합은 구조 이슈로 침
+        # 하락/보합은 구조 이슈로 분류
+        if total_delta <= 0:
+            return "STRUCTURE_ISSUE", 0.0, cur_list
 
         contribution = top_delta / total_delta
         
-        # 기여율이 50% 넘으면 인물 이슈
+        # 기여율이 높으면 인물 이슈로 분류
         if contribution >= 0.5:
             return "PERSON_ISSUE", contribution, cur_list
         else:
@@ -104,15 +101,13 @@ def detect_spikes():
     try:
         duck = duckdb.connect(DUCK_PATH, read_only=True)
         
-        # 1. 최신 데이터 시점 확인
         last_row = duck.execute("SELECT MAX(ts_utc) FROM traffic_category_snapshot").fetchone()
         if not last_row or not last_row[0]:
             print("[Detector] 데이터 부족.")
             return
         last_ts = last_row[0]
 
-        # 2. V3 핵심 쿼리 (Median, 7-Day, 24-Hour, Current 한 번에 조회)
-        # LEAD/LAG 대신 범위를 사용하여 조인
+        # 스파이크 판정을 위한 기준선/단기/장기 지표를 한 번에 조회
         query = f"""
         WITH 
         -- 1. 현재 데이터
@@ -165,41 +160,35 @@ def detect_spikes():
         for row in rows:
             platform, cat, cur_view, med_60m, view_1h, top_1h, avg_7d, avg_24h, top_cur = row
             
-            # --- [Logic] Baseline 결정 (우선순위: 7일 -> 24시간 -> 현재의 80%) ---
+            # 기준선 우선순위: 7일 > 24시간 > 현재의 80%
             if avg_7d:
                 seasonal_base = avg_7d
             elif avg_24h:
                 seasonal_base = avg_24h
             else:
-                seasonal_base = cur_view * 0.8 # Cold Start Fallback
+                seasonal_base = cur_view * 0.8
             
             if not med_60m: med_60m = cur_view * 0.8
             if not view_1h: view_1h = cur_view * 0.8
 
-            # --- [Logic] 스파이크 판별 ---
-            # 1. 동적 델타 임계값
             dynamic_delta_req = max(MIN_ABSOLUTE_DELTA, seasonal_base * DELTA_RATIO)
             actual_delta = max(0, int(round(cur_view - seasonal_base)))
             
             growth_ratio = cur_view / med_60m if med_60m > 0 else 0.
-            # 2. 조건 검사
             cond_short = cur_view >= med_60m * GROWTH_THRESHOLD
             cond_season = cur_view >= seasonal_base * SEASONAL_THRESHOLD
             cond_delta = actual_delta >= dynamic_delta_req
 
-            # [추가] 모니터링 로그: 1.2배는 넘었는데 1.5배(기준)는 안 된 애들 구경하기
             if growth_ratio >= 1.2 and growth_ratio < GROWTH_THRESHOLD:
                 print(f"👀 [관심] {platform} {cat}: {cur_view}명 (평소 {int(med_60m)}명, {growth_ratio:.2f}배) -> 기준 미달로 탈락")
 
             if cond_short and cond_season and cond_delta:
-                # 3. 쿨타임
                 if check_cooldown(platform, cat):
                     continue
 
-                # 4. 원인 분석 (Contribution)
                 cause, ratio, clue_list = calculate_contribution(cur_view, view_1h, top_cur, top_1h)
 
-                # [보정] 유명 스트리머 유입으로 인한 급등 오탐 방지 (PERSON_ISSUE 기준 강화)
+                # 인물 이슈는 더 높은 기준으로 오탐을 줄임
                 if cause == "PERSON_ISSUE":
                     stricter_delta = max(1500, seasonal_base * 0.5)
                     if growth_ratio < 2.0 or actual_delta < stricter_delta:
@@ -211,14 +200,13 @@ def detect_spikes():
 
                 print(f"🚨 [SPIKE] {platform} {cat}: {cur_view}명 (기여율: {ratio*100:.1f}% -> {cause})")
 
-                # 5. 기록 및 에이전트 요청
                 event_detail = {
                     "stats": {
                         "current": cur_view, 
                         "baseline_season": int(round(seasonal_base)),
                         "delta": actual_delta
                     },
-                    "clues": clue_list[:3] # 상위 3명만 전달
+                    "clues": clue_list[:3]
                 }
                 
                 try:
@@ -243,12 +231,6 @@ def detect_spikes():
                     send_telegram_message(msg)
                     logging.info("🚨 [Telegram] %s 알림 전송 완료", cat)
                     
-                    # Agent 호출 (Fire & Forget)
-                    # requests.post(AGENT_URL, json={
-                    #     "platform": platform, "category": cat,
-                    #     "cause_type": cause, "stats": event_detail['stats'],
-                    #     "top_clues": clue_list
-                    # }, timeout=1)
                     alerts += 1
                 except Exception as e:
                     print(f"❌ Alert Fail: {e}")

@@ -9,7 +9,6 @@ from src.agent.tools import get_search_tool
 
 PG_DSN = f"host=postgres dbname={os.getenv('POSTGRES_DB', 'streampulse_meta')} user={os.getenv('POSTGRES_USER', 'user')} password={os.getenv('POSTGRES_PASSWORD', 'password')}"
 
-# === 1. 상태 정의 ===
 class AgentState(TypedDict):
     platform: str
     category: str
@@ -20,11 +19,8 @@ class AgentState(TypedDict):
     search_results: str
     final_report: str
 
-# === 2. LLM & 도구 설정 ===
-llm = ChatOpenAI(model="gpt-4o-mini", temperature=0) # 창의성 0으로 설정 (팩트 중심)
+llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 search_tool = get_search_tool()
-
-# === 3. 노드(Node) 정의 ===
 
 def node_hypothesize(state: AgentState):
     """[가설] 방송 제목을 기반으로 구체적인 검색어 생성"""
@@ -34,12 +30,10 @@ def node_hypothesize(state: AgentState):
     if not clues:
         return {"hypotheses": [f"{state['platform']} {category} 이슈", f"{category} 업데이트"]}
 
-    # 인물 이슈인 경우 방송 제목이 핵심
     top_streamer = clues[0]
     name = top_streamer.get('name', '')
     title = top_streamer.get('title', '')
     
-    # [수정] 검색어가 너무 포괄적이지 않도록 '방송 제목'의 핵심 키워드 추출 유도
     prompt = f"""
     분석 대상: 스트리머 '{name}'
     방송 제목: "{title}"
@@ -64,7 +58,6 @@ def node_investigate(state: AgentState):
     results = []
     for kw in keywords:
         try:
-            # 검색 결과에서 너무 긴 텍스트는 자름
             res = search_tool.invoke(kw)
             results.append(f"Q: {kw}\nA: {res[:500]}") 
         except Exception:
@@ -79,7 +72,6 @@ def node_conclude(state: AgentState):
     clues = state.get('top_clues', [])
     streamer_info = f"{clues[0].get('name')} - {clues[0].get('title')}" if clues else "정보 없음"
     
-    # [수정] 프롬프트 대폭 강화: 인물 설명 금지, 현상 묘사 집중
     prompt = f"""
     당신은 팩트만 전달하는 AI 분석가입니다. 
     주어진 방송 정보와 검색 결과를 바탕으로 급등 원인을 분석하세요.
@@ -119,7 +111,6 @@ def node_save_to_db(state: AgentState):
             )
         """
         
-        # [수정] evidence 삭제, ai_report만 깔끔하게 저장
         analysis_data = json.dumps({
             "ai_report": state['final_report']
         })

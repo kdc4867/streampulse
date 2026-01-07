@@ -4,16 +4,11 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y gcc && rm -rf /var/lib/apt/lists/*
 
-# 1. requirements.txt 먼저 설치
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# [핵심 수정] 2. 에러 나는 놈(ddgs) 강제 재설치
-# requirements.txt에 있어도 무시하고 한 번 더 깝니다. (확인 사살)
 RUN pip install --no-cache-dir -U duckduckgo-search ddgs
 
-# 코드 복사
 COPY . .
 
-# FastAPI 실행
 CMD ["uvicorn", "src.agent.server:app", "--host", "0.0.0.0", "--port", "8000"]

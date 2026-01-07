@@ -5,7 +5,6 @@ from typing import List, Dict, Any
 
 class DuckDBStore:
     def __init__(self):
-        # 환경변수에서 DB 경로 가져오기 (없으면 기본값)
         self.db_path = os.getenv("DB_PATH", "data/analytics.db")
         self._init_schema()
 
@@ -14,11 +13,9 @@ class DuckDBStore:
         return duckdb.connect(self.db_path)
 
     def _init_schema(self):
-        """테이블이 없으면 생성 (V3: Top 5 상세 정보 컬럼 추가)"""
+        """테이블이 없으면 생성 (V3: 상위 5 상세 정보 컬럼 추가)"""
         con = self._get_connection()
         try:
-            # 1. 카테고리 스냅샷 테이블
-            # top_streamers_detail: JSON Array String (ex: '[{"name":"악어", "title":"...", "viewers":5000}, ...]')
             con.execute("""
                 CREATE TABLE IF NOT EXISTS traffic_category_snapshot (
                     ts_utc TIMESTAMP,
@@ -30,9 +27,6 @@ class DuckDBStore:
                     top_streamers_detail VARCHAR 
                 );
             """)
-            # V3에서는 traffic_streamer_snapshot 테이블을 별도로 쓰지 않고 
-            # top_streamers_detail 컬럼에 핵심 정보를 압축 저장하는 방식을 사용합니다.
-            
         finally:
             con.close()
 
@@ -43,11 +37,8 @@ class DuckDBStore:
 
         con = self._get_connection()
         try:
-            # List[Dict] -> List[Tuple] 변환
             values = []
             for d in data:
-                # Top 5 리스트를 JSON 문자열로 변환 (DB 저장용)
-                # 수집기에서 'top_streamers_detail' 키에 리스트를 담아 보내야 함
                 detail_json = json.dumps(d.get('top_streamers_detail', []), ensure_ascii=False)
                 
                 values.append((

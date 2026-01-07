@@ -13,17 +13,14 @@ def render_realtime_page():
     
     df_live = get_live_traffic()
     
-    # [수정] 데이터 시간 표시 로직 (에러 수정됨)
     if not df_live.empty:
         try:
-            # groupby 뒤에 .max()를 추가했습니다!
             times = df_live.groupby('platform')['ts_utc'].max().to_dict()
-            
-            # 보기 좋게 포맷팅 (YYYY-MM-DD HH:MM)
+
             time_str_list = []
             for p, t in times.items():
                 ts_str = str(t)
-                if len(ts_str) > 16: ts_str = ts_str[:16] # 초 단위 자르기
+                if len(ts_str) > 16: ts_str = ts_str[:16]
                 time_str_list.append(f"**{p}**: {ts_str}")
             
             time_info = " | ".join(time_str_list)
@@ -75,6 +72,7 @@ def render_realtime_page():
                         if st.button(f"🤖 AI 심층 분석 요청", key=f"btn_{row.name}"):
                             with st.spinner("AI 에이전트 분석 중..."):
                                 try:
+                                    # 에이전트 분석 요청
                                     requests.post(AGENT_URL, json={
                                         "platform": row['platform'], "category": row['category_name'],
                                         "cause_type": row['event_type'], "stats": stats, "top_clues": clues

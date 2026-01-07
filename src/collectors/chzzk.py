@@ -5,9 +5,6 @@ from datetime import datetime, timezone
 from collections import defaultdict
 from typing import List, Dict, Any
 
-# ======================
-# 환경 변수 및 설정
-# ======================
 OPENAPI_URL = "https://openapi.chzzk.naver.com/open/v1/lives"
 HEADERS = {
     "Client-Id": os.environ.get("CHZZK_CLIENT_ID", ""),
@@ -22,16 +19,15 @@ def get_utc_now():
 
 def fetch_categories() -> List[Dict[str, Any]]:
     """
-    CHZZK의 모든 라이브를 수집하여 카테고리별 통계 + Top 5 스트리머 정보를 반환
+    CHZZK의 모든 라이브를 수집하여 카테고리별 통계 + 상위 5 스트리머 정보를 반환
     """
+    # API 키가 없으면 수집 불가
     if not HEADERS["Client-Id"]:
         print("[CHZZK] ⚠️ Client-ID 없음. 수집 불가.")
         return []
 
     params = {"size": 20} 
     
-    # 집계 데이터 구조: 
-    # { cat_id: { 'name': str, 'total_viewers': int, 'lives': int, 'streams': List[Dict] } }
     agg_data = defaultdict(lambda: {
         "name": "Unknown", 
         "total_viewers": 0, 
@@ -49,6 +45,7 @@ def fetch_categories() -> List[Dict[str, Any]]:
             params["next"] = next_token
 
         try:
+            # CHZZK 라이브 목록 API
             response = requests.get(OPENAPI_URL, headers=HEADERS, params=params, timeout=10)
             response.raise_for_status()
             
@@ -67,14 +64,11 @@ def fetch_categories() -> List[Dict[str, Any]]:
                 if not cat_id:
                     cat_id = "ETC"
 
-                # 1. 통계 누적
                 group = agg_data[cat_id]
                 group["name"] = cat_name
                 group["total_viewers"] += viewers
                 group["lives"] += 1
                 
-                # 2. 스트리머 상세 정보 수집 (나중에 Top 5 추출용)
-                # channelId, channelName, liveTitle 필수
                 channel_info = item.get("channel", {})
                 group["streams"].append({
                     "id": item.get("channelId") or channel_info.get("channelId"),
@@ -88,18 +82,17 @@ def fetch_categories() -> List[Dict[str, Any]]:
                 break
                 
             page_count += 1
-            time.sleep(0.05) # Rate Limit 방지
+            # 과도한 호출 방지
+            time.sleep(0.05)
 
         except Exception as e:
             print(f"[CHZZK] 수집 중 에러 발생 (Page {page_count}): {e}")
             break
     
-    # === 데이터 변환 및 Top 5 추출 ===
     results = []
     ts = get_utc_now()
     
     for cat_id, data in agg_data.items():
-        # 시청자 순 내림차순 정렬 후 상위 5개 슬라이싱
         top_5 = sorted(data["streams"], key=lambda x: x["viewers"], reverse=True)[:5]
         
         results.append({
@@ -109,7 +102,7 @@ def fetch_categories() -> List[Dict[str, Any]]:
             "category_name": str(data["name"]),
             "viewers": int(data["total_viewers"]),
             "open_lives": int(data["lives"]),
-            "top_streamers_detail": top_5  # 여기가 핵심
+            "top_streamers_detail": top_5
         })
         
     print(f"[CHZZK] 수집 완료. 총 {len(results)}개 카테고리.")
