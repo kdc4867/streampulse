@@ -51,6 +51,29 @@ docker compose logs --tail=100 collector
 docker compose logs --tail=100 detector
 ```
 
+## DuckDB 락 충돌 시 조치 (Collector "Could not set lock" 에러)
+Collector가 `analytics.db` 락 충돌로 SOOP/CHZZK 저장에 실패할 때:
+
+1. DuckDB를 쓰는 서비스를 **순서대로** 재시작 (collector는 마지막에).
+2. `dashboard`는 먼저 멈추고, collector 재시작 후 다시 띄우기.
+
+```bash
+cd ~/streampulse/infra
+docker compose restart detector
+docker compose restart api
+docker compose stop dashboard
+docker compose restart collector
+docker compose start dashboard
+```
+
+3. 로그 확인:
+```bash
+docker compose logs --tail=40 collector
+```
+`[DuckDB] 스냅샷 ...건 저장 완료` 가 보이면 정상.
+
+- **사전 방지**: detector는 DuckDB `read_only` 연결을 `try/finally`로 항상 `close`. Collector 저장은 락 에러 시 최대 3회 재시도.
+
 ## EC2 내부 속도 체크
 ```
 curl -w "TOTAL:%{time_total}\n" -o /dev/null -s http://localhost/

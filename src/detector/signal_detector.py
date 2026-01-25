@@ -146,16 +146,16 @@ def detect_spikes():
     
     try:
         duck = duckdb.connect(DUCK_PATH, read_only=True)
-        
-        last_rows = duck.execute(
-            "SELECT platform, MAX(ts_utc) AS ts FROM traffic_category_snapshot GROUP BY platform"
-        ).fetchall()
-        if not last_rows:
-            print("[Detector] 데이터 부족.")
-            return
+        try:
+            last_rows = duck.execute(
+                "SELECT platform, MAX(ts_utc) AS ts FROM traffic_category_snapshot GROUP BY platform"
+            ).fetchall()
+            if not last_rows:
+                print("[Detector] 데이터 부족.")
+                return
 
-        # 스파이크 판정을 위한 기준선/단기/장기 지표를 한 번에 조회
-        query = f"""
+            # 스파이크 판정을 위한 기준선/단기/장기 지표를 한 번에 조회
+            query = f"""
         WITH 
         -- 0. 플랫폼별 최신 시각
         last_ts AS (
@@ -210,8 +210,9 @@ def detect_spikes():
         WHERE c.viewers >= {MIN_ABSOLUTE_DELTA}
         """
         
-        rows = duck.execute(query).fetchall()
-        duck.close()
+            rows = duck.execute(query).fetchall()
+        finally:
+            duck.close()
 
         records = []
         for row in rows:
