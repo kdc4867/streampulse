@@ -13,6 +13,7 @@ HEADERS = {
 def get_utc_now():
     """현재 시간을 UTC로 반환 (DB 저장용)"""
     return datetime.now(timezone.utc).replace(microsecond=0)
+
 def fetch_categories() -> List[Dict[str, Any]]:
     """
     SOOP 카테고리 목록 수집 + 상위 카테고리에 한해 상위 5 스트리머 정보 추가 수집
@@ -35,11 +36,11 @@ def fetch_categories() -> List[Dict[str, Any]]:
         try:
             # 카테고리 목록 API
             resp = requests.get(BASE_URL, params=params, headers=HEADERS, timeout=10)
+            resp.raise_for_status()
             data = resp.json().get("data", {})
             items = data.get("list", [])
-            
-    if not items:
-        break
+            if not items:
+                break
 
             ts = get_utc_now()
             for item in items:
