@@ -1,17 +1,18 @@
+# 수집 & 데이터
 requests
 schedule
 duckdb
 psycopg2-binary
 pandas
 
+# 에이전트 (LangGraph)
 langchain
 langgraph
 langchain-openai
 langchain-community
 duckduckgo-search
-redis
-tavily-python
 
+# 웹/대시보드
 streamlit
 fastapi
 uvicorn

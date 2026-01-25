@@ -65,10 +65,18 @@ def get_live_traffic():
     try:
         since = datetime.utcnow() - timedelta(hours=24)
         query = f"""
-            WITH latest AS (
-                SELECT platform, MAX(ts_utc) AS max_ts
+            WITH stats AS (
+                SELECT platform, ts_utc,
+                       COUNT(*) AS row_count,
+                       SUM(viewers) AS total_viewers
                 FROM traffic_category_snapshot
                 WHERE ts_utc >= CAST('{since}' AS TIMESTAMP)
+                GROUP BY platform, ts_utc
+            ),
+            latest AS (
+                SELECT platform, MAX(ts_utc) AS max_ts
+                FROM stats
+                WHERE total_viewers > 0 AND row_count > 0
                 GROUP BY platform
             )
             SELECT t.platform, t.category_name, t.viewers, t.top_streamers_detail, t.ts_utc
@@ -79,6 +87,22 @@ def get_live_traffic():
             ORDER BY t.viewers DESC
         """
         df = con.execute(query).df()
+        if df.empty:
+            fallback = f"""
+                WITH latest AS (
+                    SELECT platform, MAX(ts_utc) AS max_ts
+                    FROM traffic_category_snapshot
+                    WHERE ts_utc >= CAST('{since}' AS TIMESTAMP)
+                    GROUP BY platform
+                )
+                SELECT t.platform, t.category_name, t.viewers, t.top_streamers_detail, t.ts_utc
+                FROM traffic_category_snapshot t
+                JOIN latest l
+                  ON t.platform = l.platform
+                 AND t.ts_utc = l.max_ts
+                ORDER BY t.viewers DESC
+            """
+            df = con.execute(fallback).df()
         if not df.empty:
             df["top_streamers_detail"] = df["top_streamers_detail"].apply(_parse_top_streamers)
         return _df_to_records(df)

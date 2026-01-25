@@ -1,0 +1,90 @@
+services:
+  # 1. 메타데이터 DB (PostgreSQL)
+  postgres:
+    image: postgres:15-alpine
+    container_name: stream_meta_db
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: streampulse_meta
+      PYTHONUNBUFFERED: 1
+      TZ: Asia/Seoul
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: always
+
+  # 2. 데이터 수집기 (Collector) - ★ 여기가 추가됨
+  collector:
+    build:
+      context: ..                      # 중요: 프로젝트 루트(한 단계 위)를 빌드 컨텍스트로 지정
+      dockerfile: infra/Dockerfile.collector
+    container_name: stream_collector
+    restart: always
+    env_file:
+      - ../.env                         # .env 파일 연동
+    volumes:
+      - ../data:/app/data:rw           # 데이터 저장소 (쓰기 권한)
+      - ../config:/app/config:ro       # 설정 파일
+      - ../.env:/app/.env:ro           # API 키 (.env 파일 연동)
+    environment:
+      - DB_PATH=/app/data/analytics.db # 컨테이너 내부 DB 경로
+      - PYTHONUNBUFFERED=1            # 실시간 로그 출력을 위한 설정
+      - TZ=Asia/Seoul
+  
+  dashboard:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.dashboard
+    container_name: stream_dashboard
+    restart: always
+    ports:
+      - "8501:8501"
+    volumes:
+      - ../data:/app/data:ro
+    environment:
+      - DB_PATH=/app/data/analytics.db
+      - PYTHONUNBUFFERED=1
+      - TZ=Asia/Seoul
+  
+  detector:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.detector
+    container_name: stream_detector
+    restart: always
+    env_file:
+      - ../.env
+    volumes:
+      - ../data:/app/data:ro
+      - ../config:/app/config:ro
+    depends_on:
+      - postgres
+      - collector
+      - agent
+    environment:
+      - DB_PATH=/app/data/analytics.db
+      - POSTGRES_DB=streampulse_meta
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - PYTHONUNBUFFERED=1
+      - TZ=Asia/Seoul 
+  agent:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.agent
+    container_name: stream_agent
+    restart: always
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../config:/app/config:ro
+    env_file:
+      - ../.env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TZ=Asia/Seoul
+
+volumes:
+  pg_data:

@@ -10,12 +10,10 @@ export default function Section({ title, subtitle, children }: SectionProps) {
   return (
     <section className="section">
       <div className="section-head">
-        <div>
-          <h2>{title}</h2>
-          {subtitle ? <p>{subtitle}</p> : null}
-        </div>
+        <h2>{title}</h2>
+        {subtitle ? <p className="subtitle">{subtitle}</p> : null}
       </div>
-      {children}
+      <div className="section-content">{children}</div>
     </section>
   );
 }
