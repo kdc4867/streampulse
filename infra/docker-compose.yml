@@ -146,7 +146,7 @@ services:
       - PYTHONUNBUFFERED=1
       - REDIS_URL=redis://redis:6379/0
       - TZ=Asia/Seoul
-    command: ["python", "/app/src/agent/worker.py"]
+    command: ["python", "-m", "src.agent.worker"]
 
 volumes:
   pg_data:
