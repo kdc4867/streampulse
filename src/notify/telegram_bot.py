@@ -4,9 +4,10 @@ import logging
 
 logger = logging.getLogger("telegram_bot")
 
-def send_telegram_message(message: str):
+def send_telegram_message(message: str, *, raise_on_failure: bool = False):
     """
     텔레그램 메시지 전송 함수
+    raise_on_failure: True면 실패 시 예외 발생 (Agent Worker용, 원인 추적용)
     """
     token = os.getenv("TELEGRAM_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
@@ -27,6 +28,12 @@ def send_telegram_message(message: str):
     try:
         response = requests.post(url, json=payload, timeout=5)
         if response.status_code != 200:
-            logger.error(f"텔레그램 전송 실패: {response.text}")
-    except Exception as e:
-        logger.error(f"텔레그램 에러 발생: {e}")
+            err = RuntimeError(f"Telegram API {response.status_code}: {response.text}")
+            logger.error("텔레그램 전송 실패: %s", response.text)
+            if raise_on_failure:
+                raise err
+            return
+    except requests.RequestException as e:
+        logger.error("텔레그램 에러 발생: %s", e)
+        if raise_on_failure:
+            raise

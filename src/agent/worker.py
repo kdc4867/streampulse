@@ -250,27 +250,30 @@ def process_event(row):
             should_alert = True
 
     if should_alert:
-        stats = cause.get("stats", {})
-        current = int(stats.get("current") or 0)
-        baseline = int(stats.get("baseline_season") or 0)
-        delta = int(stats.get("delta") or 0)
-        reason = result.get("analysis_reason") or result.get("final_report", "")
-        event_kind = result.get("event_kind") or ""
-        top_clues = cause.get("clues", [])
-        top_streamer = top_clues[0].get("name", "Unknown") if top_clues else "Unknown"
-        msg = (
-            f"🚨 **[급등 확정] {platform}**\n"
-            f"카테고리: `{category_name}`\n"
-            f"현재 시청자: {current:,}명\n"
-            f"증가량: +{delta:,}명\n"
-            f"기준 시청자: {baseline:,}명\n"
-            f"핵심 스트리머: {top_streamer}\n"
-            f"판정: {verdict} {event_kind}".strip()
-        )
-        if reason:
-            msg = f"{msg}\n근거: {reason}"
-        send_telegram_message(msg)
-        logging.info("🚨 [Agent Alert] %s 알림 전송 완료", category_name)
+        try:
+            stats = cause.get("stats", {})
+            current = int(stats.get("current") or 0)
+            baseline = int(stats.get("baseline_season") or 0)
+            delta = int(stats.get("delta") or 0)
+            reason = result.get("analysis_reason") or result.get("final_report", "")
+            event_kind = result.get("event_kind") or ""
+            top_clues = cause.get("clues", []) or []
+            top_streamer = top_clues[0].get("name", "Unknown") if top_clues else "Unknown"
+            msg = (
+                f"🚨 **[급등 확정] {platform}**\n"
+                f"카테고리: `{category_name}`\n"
+                f"현재 시청자: {current:,}명\n"
+                f"증가량: +{delta:,}명\n"
+                f"기준 시청자: {baseline:,}명\n"
+                f"핵심 스트리머: {top_streamer}\n"
+                f"판정: {verdict} {event_kind}".strip()
+            )
+            if reason:
+                msg = f"{msg}\n근거: {reason}"
+            send_telegram_message(msg, raise_on_failure=True)
+            logging.info("🚨 [Agent Alert] %s 알림 전송 완료", category_name)
+        except Exception as e:
+            logging.exception("❌ [Agent Alert] 텔레그램 전송 실패 (event_id=%s, cat=%s): %s", event_id, category_name, e)
 
 def run_worker(poll_interval=5):
     logging.info("🤖 [Agent Worker] 시작 (poll=%ss)", poll_interval)
@@ -284,6 +287,7 @@ def run_worker(poll_interval=5):
                 try:
                     process_event(row)
                 except Exception as e:
+                    logging.exception("❌ [Agent Worker] 이벤트 처리 실패 (event_id=%s): %s", row[0], e)
                     mark_failed(row[0], e)
         except Exception as e:
             logging.exception("❌ [Agent Worker] 처리 실패: %s", e)
