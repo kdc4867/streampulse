@@ -142,7 +142,8 @@ def sum_top2_5_viewers(top_list):
     return sum(int(item.get("viewers", 0) or 0) for item in top_list[1:5])
 
 def detect_spikes():
-    print(f"\n[Detector] 🔍 V3 로직 분석 시작 ({time.strftime('%H:%M:%S')})")
+    ts = time.strftime("%H:%M:%S")
+    print(f"\n[Detector] 🔍 V3 로직 분석 시작 ({ts})")
     
     try:
         duck = duckdb.connect(DUCK_PATH, read_only=True)
@@ -215,6 +216,7 @@ def detect_spikes():
             duck.close()
 
         records = []
+        print(f"[Detector] DuckDB 분석 대상 {len(rows)}건")
         for row in rows:
             platform, cat, cur_view, open_now, med_60m, view_1h, open_1h, top_1h, avg_7d, avg_24h, top_cur = row
 
@@ -369,6 +371,7 @@ def detect_spikes():
                 f"{label} {platform} {cat}: {cur_view}명 "
                 f"(기여율: {ratio*100:.1f}% -> {classification})"
             )
+            print(f"[Detector] 감지 {signal_level} | {platform} {cat} | 시청자={cur_view} delta={actual_delta} 분류={classification}")
 
             event_detail = {
                 "signal_level": signal_level,
@@ -422,6 +425,7 @@ def detect_spikes():
                 conn.commit()
                 conn.close()
 
+                print(f"[Detector] DB INSERT | {platform} {cat} | signal_level={signal_level} status={analysis_status}")
                 if (
                     signal_level == "SPIKE"
                     and classification != "CATEGORY_ADOPTION"

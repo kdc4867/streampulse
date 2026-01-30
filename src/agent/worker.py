@@ -187,7 +187,10 @@ def process_event(row):
     stats = cause.get("stats", {})
     signal_level = cause.get("signal_level", "")
     allow_research, skip_reason = should_research(signal_level, event_type, stats)
+    action = "리서치" if allow_research else f"스킵(reason={skip_reason})"
+    print(f"[Agent] 리서치 대상 event_id={event_id} {platform}/{category_name} signal_level={signal_level} → {action}")
     if not allow_research:
+        print(f"[Agent] 리서치 스킵 event_id={event_id} {platform}/{category_name} reason={skip_reason}")
         update_event(
             event_id,
             "SKIPPED",
@@ -208,6 +211,7 @@ def process_event(row):
         )
         return
 
+    print(f"[Agent] 리서치 시작 event_id={event_id} {platform}/{category_name}")
     result = agent_app.invoke(inputs)
     update_event(
         event_id,
@@ -249,6 +253,7 @@ def process_event(row):
         ):
             should_alert = True
 
+    print(f"[Agent] 리서치 완료 event_id={event_id} {platform}/{category_name} verdict={verdict} passes_gate={passes_alert_gate} should_alert={should_alert}")
     if should_alert:
         try:
             stats = cause.get("stats", {})
@@ -271,9 +276,11 @@ def process_event(row):
             if reason:
                 msg = f"{msg}\n근거: {reason}"
             send_telegram_message(msg, raise_on_failure=True)
-            logging.info("🚨 [Agent Alert] %s 알림 전송 완료", category_name)
+            print(f"[Agent] 🚨 알림 발송 event_id={event_id} {platform}/{category_name}")
         except Exception as e:
             logging.exception("❌ [Agent Alert] 텔레그램 전송 실패 (event_id=%s, cat=%s): %s", event_id, category_name, e)
+    else:
+        print(f"[Agent] 알림 스킵 event_id={event_id} {platform}/{category_name} verdict={verdict} gate={passes_alert_gate} mode={AGENT_ALERT_MODE}")
 
 def run_worker(poll_interval=5):
     logging.info("🤖 [Agent Worker] 시작 (poll=%ss)", poll_interval)
@@ -283,6 +290,7 @@ def run_worker(poll_interval=5):
             if not rows:
                 time.sleep(poll_interval)
                 continue
+            print(f"[Agent] PENDING {len(rows)}건 조회 → 리서치 대상")
             for row in rows:
                 try:
                     process_event(row)
