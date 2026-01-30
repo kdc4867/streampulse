@@ -36,7 +36,7 @@ class DuckDBStore:
             con.close()
 
     def save_category_snapshot(self, data: List[Dict[str, Any]]):
-        """카테고리 데이터 저장 (JSON 변환 포함). 락 충돌 시 최대 3회 재시도."""
+        """카테고리 데이터 저장 (JSON 변환 포함). 락 충돌 시 최대 6회 재시도(백오프 2/4/8/16/32초)."""
         if not data:
             return
 
@@ -53,8 +53,8 @@ class DuckDBStore:
                 detail_json,
             ))
 
-        max_retries = 3
-        backoff = 1.0
+        max_retries = 6
+        backoff = 2.0
         last_err = None
         for attempt in range(max_retries):
             con = None
@@ -70,7 +70,9 @@ class DuckDBStore:
             except Exception as e:
                 last_err = e
                 if _is_lock_error(e) and attempt < max_retries - 1:
-                    time.sleep(backoff * (2**attempt))
+                    wait = backoff * (2**attempt)
+                    print(f"[DuckDB] 락 대기 재시도 {attempt + 1}/{max_retries} ({wait:.0f}s 후)")
+                    time.sleep(wait)
                     continue
                 print(f"[DuckDB] 저장 실패: {e}")
                 raise last_err

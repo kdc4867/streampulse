@@ -459,7 +459,8 @@ def detect_spikes():
 
 def run():
     print("👀 [Signal Detector V3] 가동 - (Weekly/Median/Delta)")
-    time.sleep(5)
+    # Collector(5분 주기)와 DuckDB 접근 시각을 엇갈리게 90초 대기
+    time.sleep(90)
     init_db()
     schedule.every(5).minutes.do(detect_spikes)
     
