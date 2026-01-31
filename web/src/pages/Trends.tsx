@@ -82,7 +82,13 @@ export default function Trends() {
       return;
     }
     let mounted = true;
-    Promise.all(targets.map((cat) => getTrend(cat, hours)))
+    const trendOpts =
+      rangeStart && rangeEnd ? { start: rangeStart, end: rangeEnd } : undefined;
+    Promise.all(
+      targets.map((cat) =>
+        trendOpts ? getTrend(cat, hours, trendOpts) : getTrend(cat, hours)
+      )
+    )
       .then((results) => {
         if (!mounted) return;
         const merged = targets.map((cat, idx) => ({
@@ -98,7 +104,7 @@ export default function Trends() {
     return () => {
       mounted = false;
     };
-  }, [selected, hours]);
+  }, [selected, hours, rangeStart, rangeEnd]);
 
   const categories = useMemo(() => {
     return Array.from(new Set(live.map((item) => item.category_name))).sort();
@@ -211,7 +217,7 @@ export default function Trends() {
           </div>
         </div>
         <div className="trend-hint">
-          기준 시간대: UTC | 현재 설정: {hours}시간
+          기준 시간대: KST(Asia/Seoul) | 현재 설정: {hours}시간
         </div>
       </div>
 

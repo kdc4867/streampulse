@@ -11,39 +11,60 @@ def get_live():
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/events")
-def get_events():
+def get_events(
+    since: str | None = Query(None, description="YYYY-MM-DD, filter from this date"),
+    limit: int | None = Query(None, ge=1, le=500, description="Max rows when since is set"),
+):
     try:
-        return {"data": service.get_events()}
+        return {"data": service.get_events(since=since, limit=limit)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @router.get("/trend")
-def get_trend(category: str = Query(...), hours: int = Query(12, ge=1, le=720)):
+def get_trend(
+    category: str = Query(...),
+    hours: int = Query(12, ge=1, le=720),
+    start: str | None = Query(None, description="YYYY-MM-DD"),
+    end: str | None = Query(None, description="YYYY-MM-DD"),
+):
     try:
-        return {"data": service.get_trend_data(category, hours)}
+        return {"data": service.get_trend_data(category, hours=hours, start=start, end=end)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/flash")
-def get_flash():
+def get_flash(
+    start: str | None = Query(None, description="YYYY-MM-DD"),
+    end: str | None = Query(None, description="YYYY-MM-DD"),
+):
     try:
-        return {"data": service.get_flash_categories()}
+        return {"data": service.get_flash_categories(start=start, end=end)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/daily-top")
-def get_daily_top():
+def get_daily_top(
+    start: str | None = Query(None, description="YYYY-MM-DD"),
+    end: str | None = Query(None, description="YYYY-MM-DD"),
+):
     try:
-        return {"data": service.get_daily_category_top()}
+        return {"data": service.get_daily_category_top(start=start, end=end)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @router.get("/king")
-def get_king():
+def get_king(
+    start: str | None = Query(None, description="YYYY-MM-DD"),
+    end: str | None = Query(None, description="YYYY-MM-DD"),
+):
     try:
-        return {"data": service.get_king_of_streamers()}
+        return {"data": service.get_king_of_streamers(start=start, end=end)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/new")
 def get_new():
@@ -52,9 +73,24 @@ def get_new():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @router.get("/volatility")
-def get_volatility():
+def get_volatility(
+    start: str | None = Query(None, description="YYYY-MM-DD"),
+    end: str | None = Query(None, description="YYYY-MM-DD"),
+):
     try:
-        return {"data": service.get_volatility_metrics()}
+        return {"data": service.get_volatility_metrics(start=start, end=end)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/insights-period")
+def get_insights_period(
+    start: str = Query(..., description="YYYY-MM-DD"),
+    end: str = Query(..., description="YYYY-MM-DD"),
+):
+    try:
+        return {"data": service.get_insights_period(start=start, end=end)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

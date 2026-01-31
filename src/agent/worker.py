@@ -187,10 +187,9 @@ def process_event(row):
     stats = cause.get("stats", {})
     signal_level = cause.get("signal_level", "")
     allow_research, skip_reason = should_research(signal_level, event_type, stats)
-    action = "리서치" if allow_research else f"스킵(reason={skip_reason})"
-    print(f"[Agent] 리서치 대상 event_id={event_id} {platform}/{category_name} signal_level={signal_level} → {action}")
+    print(f"[Agent] [1/4] event_id={event_id} {platform}/{category_name} signal_level={signal_level}")
+    print(f"[Agent] [2/4] event_id={event_id} 리서치 여부: {'진행' if allow_research else '스킵'} reason={skip_reason or '-'}")
     if not allow_research:
-        print(f"[Agent] 리서치 스킵 event_id={event_id} {platform}/{category_name} reason={skip_reason}")
         update_event(
             event_id,
             "SKIPPED",
@@ -211,8 +210,14 @@ def process_event(row):
         )
         return
 
-    print(f"[Agent] 리서치 시작 event_id={event_id} {platform}/{category_name}")
-    result = agent_app.invoke(inputs)
+    print(f"[Agent] [3/4] event_id={event_id} LLM 호출 중 (OpenAI/graph)...")
+    try:
+        result = agent_app.invoke(inputs)
+    except Exception as e:
+        print(f"[Agent] [3/4] event_id={event_id} LLM 호출 실패: {e}")
+        raise
+    verdict = result.get("analysis_verdict", "")
+    print(f"[Agent] [3/4] event_id={event_id} LLM 완료 verdict={verdict}")
     update_event(
         event_id,
         "DONE",
@@ -253,7 +258,7 @@ def process_event(row):
         ):
             should_alert = True
 
-    print(f"[Agent] 리서치 완료 event_id={event_id} {platform}/{category_name} verdict={verdict} passes_gate={passes_alert_gate} should_alert={should_alert}")
+    print(f"[Agent] [4/4] event_id={event_id} 결과·알림: verdict={verdict} gate={passes_alert_gate} should_alert={should_alert} → {'발송' if should_alert else '스킵'}")
     if should_alert:
         try:
             stats = cause.get("stats", {})
@@ -276,21 +281,49 @@ def process_event(row):
             if reason:
                 msg = f"{msg}\n근거: {reason}"
             send_telegram_message(msg, raise_on_failure=True)
-            print(f"[Agent] 🚨 알림 발송 event_id={event_id} {platform}/{category_name}")
+            print(f"[Agent] 🚨 [4/4] 알림 발송 완료 event_id={event_id} {platform}/{category_name}")
         except Exception as e:
             logging.exception("❌ [Agent Alert] 텔레그램 전송 실패 (event_id=%s, cat=%s): %s", event_id, category_name, e)
     else:
-        print(f"[Agent] 알림 스킵 event_id={event_id} {platform}/{category_name} verdict={verdict} gate={passes_alert_gate} mode={AGENT_ALERT_MODE}")
+        print(f"[Agent] [4/4] 알림 스킵 event_id={event_id} verdict={verdict} mode={AGENT_ALERT_MODE}")
+
+def _startup_checks():
+    """EC2 이관 후 알람 안 올 때 원인 파악용: Postgres·필수 env 검사."""
+    errors = []
+    try:
+        conn = get_pg_conn()
+        conn.close()
+        print("[Agent Worker] ✅ Postgres 연결 OK")
+    except Exception as e:
+        errors.append(f"Postgres 연결 실패: {e}")
+        print(f"[Agent Worker] ❌ Postgres 연결 실패: {e}")
+
+    for key in ("OPENAI_API_KEY", "TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID"):
+        val = os.getenv(key)
+        status = "set" if (val and val.strip()) else "NOT SET"
+        print(f"[Agent Worker] {key}: {status}")
+        if key == "OPENAI_API_KEY" and not (val and val.strip()):
+            errors.append("OPENAI_API_KEY 비어 있음")
+
+    if errors:
+        print("[Agent Worker] ⚠️ 시작 검사 이상:", "; ".join(errors))
+
 
 def run_worker(poll_interval=5):
+    _startup_checks()
     logging.info("🤖 [Agent Worker] 시작 (poll=%ss)", poll_interval)
+    poll_count = 0
     while True:
         try:
             rows = fetch_pending()
             if not rows:
+                poll_count += 1
+                if poll_count % 24 == 0:
+                    print(f"[Agent] 대기 중 (PENDING 0건, {poll_interval}초마다 폴)")
                 time.sleep(poll_interval)
                 continue
-            print(f"[Agent] PENDING {len(rows)}건 조회 → 리서치 대상")
+            poll_count = 0
+            print(f"[Agent] === PENDING {len(rows)}건 처리 시작 ===")
             for row in rows:
                 try:
                     process_event(row)

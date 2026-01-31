@@ -1,12 +1,13 @@
 import json
 import os
+import re
 import time
 from datetime import datetime, timedelta
 
 import duckdb
 import numpy as np
 import pandas as pd
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 
 DUCK_PATH = os.getenv("DB_PATH", "data/analytics.db")
 PG_USER = os.getenv("POSTGRES_USER", "user")
@@ -15,6 +16,32 @@ PG_DB = os.getenv("POSTGRES_DB", "streampulse_meta")
 PG_HOST = os.getenv("POSTGRES_HOST", "postgres")
 PG_PORT = os.getenv("POSTGRES_PORT", "5432")
 PG_URL = f"postgresql://{PG_USER}:{PG_PASS}@{PG_HOST}:{PG_PORT}/{PG_DB}"
+
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _parse_date_utc(s: str | None) -> datetime | None:
+    """Parse YYYY-MM-DD to UTC 00:00. Returns None if invalid or None."""
+    if not s or not isinstance(s, str):
+        return None
+    s = s.strip()
+    if not _DATE_RE.match(s):
+        return None
+    try:
+        return datetime.strptime(s, "%Y-%m-%d")
+    except ValueError:
+        return None
+
+
+def _parse_start_end(start: str | None, end: str | None) -> tuple[datetime | None, datetime | None]:
+    """Return (start_utc, end_exclusive_utc). end_exclusive is start of next day."""
+    s = _parse_date_utc(start)
+    e = _parse_date_utc(end)
+    if s is None or e is None or e < s:
+        return None, None
+    end_exclusive = e + timedelta(days=1)
+    return s, end_exclusive
+
 
 def _get_connection(retries=3, backoff=0.2):
     last_err = None
@@ -109,67 +136,123 @@ def get_live_traffic():
     finally:
         con.close()
 
-def get_trend_data(category_name, hours=12):
+def get_trend_data(category_name: str, hours: int = 12, start: str | None = None, end: str | None = None):
     con = _get_connection()
     try:
-        query = f"""
-            SELECT ts_utc, platform, viewers, top_streamers_detail
-            FROM traffic_category_snapshot
-            WHERE category_name = '{category_name}'
-              AND ts_utc >= CAST('{datetime.utcnow() - timedelta(hours=hours)}' AS TIMESTAMP)
-            ORDER BY ts_utc ASC
-        """
-        df = con.execute(query).df()
+        if start and end:
+            start_dt, end_dt = _parse_start_end(start, end)
+            if start_dt is None or end_dt is None:
+                return []
+            q = """
+                SELECT ts_utc, platform, viewers, top_streamers_detail
+                FROM traffic_category_snapshot
+                WHERE category_name = ? AND ts_utc >= ? AND ts_utc < ?
+                ORDER BY ts_utc ASC
+            """
+            df = con.execute(q, [category_name, start_dt, end_dt]).df()
+        else:
+            since = datetime.utcnow() - timedelta(hours=hours)
+            q = """
+                SELECT ts_utc, platform, viewers, top_streamers_detail
+                FROM traffic_category_snapshot
+                WHERE category_name = ? AND ts_utc >= ?
+                ORDER BY ts_utc ASC
+            """
+            df = con.execute(q, [category_name, since]).df()
         if not df.empty:
             df["top_streamers_detail"] = df["top_streamers_detail"].apply(_parse_top_streamers)
         return _df_to_records(df)
     finally:
         con.close()
 
-def get_events():
+def get_events(since: str | None = None, limit: int | None = None):
     try:
         engine = create_engine(PG_URL)
-        query = "SELECT * FROM signal_events ORDER BY created_at DESC LIMIT 20"
-        df = pd.read_sql(query, engine)
+        if since is not None:
+            since_dt = _parse_date_utc(since)
+            if since_dt is None:
+                return []
+            lim = min(int(limit or 100), 500)
+            q = text(
+                "SELECT * FROM signal_events WHERE created_at >= :since ORDER BY created_at DESC LIMIT :lim"
+            )
+            df = pd.read_sql(q, engine, params={"since": since_dt, "lim": lim})
+        else:
+            q = text("SELECT * FROM signal_events ORDER BY created_at DESC LIMIT 20")
+            df = pd.read_sql(q, engine)
         return _df_to_records(df)
     except Exception:
         return []
 
-def get_flash_categories():
+def get_flash_categories(start: str | None = None, end: str | None = None):
     con = _get_connection()
     try:
         ts_check = con.execute("SELECT MAX(ts_utc) FROM traffic_category_snapshot").fetchone()
         if not ts_check or not ts_check[0]:
             return []
         last_ts = ts_check[0]
-        query = f"""
-            WITH stats AS (
+        if start and end:
+            start_dt, end_dt = _parse_start_end(start, end)
+            if start_dt is None or end_dt is None:
+                return []
+            q = """
+                WITH stats AS (
+                    SELECT
+                        platform, category_name,
+                        MAX(viewers) as peak_viewers,
+                        ARG_MAX(top_streamers_detail, viewers) as peak_streamer_json,
+                        COUNT(DISTINCT CAST(ts_utc AS DATE)) FILTER (WHERE viewers > 1000) as active_days
+                    FROM traffic_category_snapshot
+                    WHERE ts_utc >= ? AND ts_utc < ?
+                    GROUP BY platform, category_name
+                ),
+                current_status AS (
+                    SELECT platform, category_name, viewers as curr_viewers, top_streamers_detail as curr_streamer_json
+                    FROM traffic_category_snapshot
+                    WHERE ts_utc = ?
+                )
                 SELECT
-                    platform, category_name,
-                    MAX(viewers) as peak_viewers,
-                    ARG_MAX(top_streamers_detail, viewers) as peak_streamer_json,
-                    COUNT(DISTINCT CAST(ts_utc AS DATE)) FILTER (WHERE viewers > 1000) as active_days
-                FROM traffic_category_snapshot
-                WHERE ts_utc >= CAST('{datetime.utcnow() - timedelta(days=30)}' AS TIMESTAMP)
-                GROUP BY platform, category_name
-            ),
-            current_status AS (
-                SELECT platform, category_name, viewers as curr_viewers, top_streamers_detail as curr_streamer_json
-                FROM traffic_category_snapshot
-                WHERE ts_utc = CAST('{last_ts}' AS TIMESTAMP)
-            )
-            SELECT
-                s.platform, s.category_name, s.peak_viewers, s.active_days, s.peak_streamer_json,
-                c.curr_viewers, c.curr_streamer_json
-            FROM stats s
-            JOIN current_status c ON s.platform = c.platform AND s.category_name = c.category_name
-            WHERE s.peak_viewers > 2000
-              AND s.active_days < 5
-              AND c.curr_viewers < 300
-            ORDER BY s.peak_viewers DESC
-            LIMIT 50
-        """
-        df = con.execute(query).df()
+                    s.platform, s.category_name, s.peak_viewers, s.active_days, s.peak_streamer_json,
+                    c.curr_viewers, c.curr_streamer_json
+                FROM stats s
+                JOIN current_status c ON s.platform = c.platform AND s.category_name = c.category_name
+                WHERE s.peak_viewers > 2000
+                  AND s.active_days < 5
+                  AND c.curr_viewers < 300
+                ORDER BY s.peak_viewers DESC
+                LIMIT 50
+            """
+            df = con.execute(q, [start_dt, end_dt, last_ts]).df()
+        else:
+            thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+            q = """
+                WITH stats AS (
+                    SELECT
+                        platform, category_name,
+                        MAX(viewers) as peak_viewers,
+                        ARG_MAX(top_streamers_detail, viewers) as peak_streamer_json,
+                        COUNT(DISTINCT CAST(ts_utc AS DATE)) FILTER (WHERE viewers > 1000) as active_days
+                    FROM traffic_category_snapshot
+                    WHERE ts_utc >= ?
+                    GROUP BY platform, category_name
+                ),
+                current_status AS (
+                    SELECT platform, category_name, viewers as curr_viewers, top_streamers_detail as curr_streamer_json
+                    FROM traffic_category_snapshot
+                    WHERE ts_utc = ?
+                )
+                SELECT
+                    s.platform, s.category_name, s.peak_viewers, s.active_days, s.peak_streamer_json,
+                    c.curr_viewers, c.curr_streamer_json
+                FROM stats s
+                JOIN current_status c ON s.platform = c.platform AND s.category_name = c.category_name
+                WHERE s.peak_viewers > 2000
+                  AND s.active_days < 5
+                  AND c.curr_viewers < 300
+                ORDER BY s.peak_viewers DESC
+                LIMIT 50
+            """
+            df = con.execute(q, [thirty_days_ago, last_ts]).df()
         if df.empty:
             return []
 
@@ -190,34 +273,60 @@ def get_flash_categories():
     finally:
         con.close()
 
-def get_daily_category_top():
+def get_daily_category_top(start: str | None = None, end: str | None = None):
     con = _get_connection()
     try:
-        yesterday = datetime.utcnow() - timedelta(days=1)
-        query = f"""
-            SELECT platform, category_name,
-                   CAST(AVG(viewers) AS INT) as avg_viewers,
-                   MAX(viewers) as peak_viewers
-            FROM traffic_category_snapshot
-            WHERE ts_utc >= CAST('{yesterday}' AS TIMESTAMP)
-            GROUP BY platform, category_name
-            ORDER BY avg_viewers DESC
-        """
-        df = con.execute(query).df()
+        if start and end:
+            start_dt, end_dt = _parse_start_end(start, end)
+            if start_dt is None or end_dt is None:
+                return []
+            q = """
+                SELECT platform, category_name,
+                       CAST(AVG(viewers) AS INT) as avg_viewers,
+                       MAX(viewers) as peak_viewers
+                FROM traffic_category_snapshot
+                WHERE ts_utc >= ? AND ts_utc < ?
+                GROUP BY platform, category_name
+                ORDER BY avg_viewers DESC
+            """
+            df = con.execute(q, [start_dt, end_dt]).df()
+        else:
+            yesterday = datetime.utcnow() - timedelta(days=1)
+            q = """
+                SELECT platform, category_name,
+                       CAST(AVG(viewers) AS INT) as avg_viewers,
+                       MAX(viewers) as peak_viewers
+                FROM traffic_category_snapshot
+                WHERE ts_utc >= ?
+                GROUP BY platform, category_name
+                ORDER BY avg_viewers DESC
+            """
+            df = con.execute(q, [yesterday]).df()
         return _df_to_records(df)
     finally:
         con.close()
 
-def get_king_of_streamers():
+def get_king_of_streamers(start: str | None = None, end: str | None = None):
     con = _get_connection()
     try:
-        yesterday = datetime.utcnow() - timedelta(days=1)
-        query = f"""
-            SELECT platform, category_name, top_streamers_detail, ts_utc
-            FROM traffic_category_snapshot
-            WHERE ts_utc >= CAST('{yesterday}' AS TIMESTAMP)
-        """
-        df_raw = con.execute(query).df()
+        if start and end:
+            start_dt, end_dt = _parse_start_end(start, end)
+            if start_dt is None or end_dt is None:
+                return []
+            q = """
+                SELECT platform, category_name, top_streamers_detail, ts_utc
+                FROM traffic_category_snapshot
+                WHERE ts_utc >= ? AND ts_utc < ?
+            """
+            df_raw = con.execute(q, [start_dt, end_dt]).df()
+        else:
+            yesterday = datetime.utcnow() - timedelta(days=1)
+            q = """
+                SELECT platform, category_name, top_streamers_detail, ts_utc
+                FROM traffic_category_snapshot
+                WHERE ts_utc >= ?
+            """
+            df_raw = con.execute(q, [yesterday]).df()
 
         streamer_list = []
         for _, row in df_raw.iterrows():
@@ -280,20 +389,84 @@ def get_new_categories():
     finally:
         con.close()
 
-def get_volatility_metrics():
+def get_volatility_metrics(start: str | None = None, end: str | None = None):
     con = _get_connection()
     try:
-        yesterday = datetime.utcnow() - timedelta(days=1)
-        query = f"""
-            SELECT platform, category_name,
-                   CAST(AVG(viewers) AS INT) as avg_v,
-                   (STDDEV(viewers) / NULLIF(AVG(viewers),0)) as volatility_index
-            FROM traffic_category_snapshot
-            WHERE ts_utc >= CAST('{yesterday}' AS TIMESTAMP)
-            GROUP BY 1, 2
-            HAVING avg_v > 500
-        """
-        df = con.execute(query).df()
+        if start and end:
+            start_dt, end_dt = _parse_start_end(start, end)
+            if start_dt is None or end_dt is None:
+                return []
+            q = """
+                SELECT platform, category_name,
+                       CAST(AVG(viewers) AS INT) as avg_v,
+                       (STDDEV(viewers) / NULLIF(AVG(viewers),0)) as volatility_index
+                FROM traffic_category_snapshot
+                WHERE ts_utc >= ? AND ts_utc < ?
+                GROUP BY 1, 2
+                HAVING avg_v > 500
+            """
+            df = con.execute(q, [start_dt, end_dt]).df()
+        else:
+            yesterday = datetime.utcnow() - timedelta(days=1)
+            q = """
+                SELECT platform, category_name,
+                       CAST(AVG(viewers) AS INT) as avg_v,
+                       (STDDEV(viewers) / NULLIF(AVG(viewers),0)) as volatility_index
+                FROM traffic_category_snapshot
+                WHERE ts_utc >= ?
+                GROUP BY 1, 2
+                HAVING avg_v > 500
+            """
+            df = con.execute(q, [yesterday]).df()
         return _df_to_records(df)
     finally:
         con.close()
+
+
+def get_insights_period(start: str, end: str) -> dict:
+    """기간 내 signal_events 집계: total, by_platform, by_event_type."""
+    start_dt, end_dt = _parse_start_end(start, end)
+    if start_dt is None or end_dt is None:
+        return {
+            "total_events": 0,
+            "by_platform": {},
+            "by_event_type": {},
+            "start": start,
+            "end": end,
+        }
+    try:
+        engine = create_engine(PG_URL)
+        q = text("""
+            SELECT COUNT(*) as n FROM signal_events
+            WHERE created_at >= :s AND created_at < :e
+        """)
+        total = int(pd.read_sql(q, engine, params={"s": start_dt, "e": end_dt}).iloc[0]["n"])
+        q_plat = text("""
+            SELECT platform, COUNT(*) as n FROM signal_events
+            WHERE created_at >= :s AND created_at < :e
+            GROUP BY platform
+        """)
+        df_plat = pd.read_sql(q_plat, engine, params={"s": start_dt, "e": end_dt})
+        by_platform = {str(r["platform"]): int(r["n"]) for _, r in df_plat.iterrows()}
+        q_typ = text("""
+            SELECT event_type, COUNT(*) as n FROM signal_events
+            WHERE created_at >= :s AND created_at < :e
+            GROUP BY event_type
+        """)
+        df_typ = pd.read_sql(q_typ, engine, params={"s": start_dt, "e": end_dt})
+        by_event_type = {str(r["event_type"]): int(r["n"]) for _, r in df_typ.iterrows()}
+        return {
+            "total_events": total,
+            "by_platform": by_platform,
+            "by_event_type": by_event_type,
+            "start": start,
+            "end": end,
+        }
+    except Exception:
+        return {
+            "total_events": 0,
+            "by_platform": {},
+            "by_event_type": {},
+            "start": start,
+            "end": end,
+        }
