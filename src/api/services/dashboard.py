@@ -3,6 +3,7 @@ import os
 import re
 import time
 from datetime import datetime, timedelta
+from typing import Optional, Tuple
 
 import duckdb
 import numpy as np
@@ -20,7 +21,7 @@ PG_URL = f"postgresql://{PG_USER}:{PG_PASS}@{PG_HOST}:{PG_PORT}/{PG_DB}"
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
-def _parse_date_utc(s: str | None) -> datetime | None:
+def _parse_date_utc(s: Optional[str]) -> Optional[datetime]:
     """Parse YYYY-MM-DD to UTC 00:00. Returns None if invalid or None."""
     if not s or not isinstance(s, str):
         return None
@@ -33,7 +34,7 @@ def _parse_date_utc(s: str | None) -> datetime | None:
         return None
 
 
-def _parse_start_end(start: str | None, end: str | None) -> tuple[datetime | None, datetime | None]:
+def _parse_start_end(start: Optional[str], end: Optional[str]) -> Tuple[Optional[datetime], Optional[datetime]]:
     """Return (start_utc, end_exclusive_utc). end_exclusive is start of next day."""
     s = _parse_date_utc(start)
     e = _parse_date_utc(end)
@@ -136,7 +137,7 @@ def get_live_traffic():
     finally:
         con.close()
 
-def get_trend_data(category_name: str, hours: int = 12, start: str | None = None, end: str | None = None):
+def get_trend_data(category_name: str, hours: int = 12, start: Optional[str] = None, end: Optional[str] = None):
     con = _get_connection()
     try:
         if start and end:
@@ -165,7 +166,7 @@ def get_trend_data(category_name: str, hours: int = 12, start: str | None = None
     finally:
         con.close()
 
-def get_events(since: str | None = None, limit: int | None = None):
+def get_events(since: Optional[str] = None, limit: Optional[int] = None):
     try:
         engine = create_engine(PG_URL)
         if since is not None:
@@ -184,7 +185,7 @@ def get_events(since: str | None = None, limit: int | None = None):
     except Exception:
         return []
 
-def get_flash_categories(start: str | None = None, end: str | None = None):
+def get_flash_categories(start: Optional[str] = None, end: Optional[str] = None):
     con = _get_connection()
     try:
         ts_check = con.execute("SELECT MAX(ts_utc) FROM traffic_category_snapshot").fetchone()
@@ -273,7 +274,7 @@ def get_flash_categories(start: str | None = None, end: str | None = None):
     finally:
         con.close()
 
-def get_daily_category_top(start: str | None = None, end: str | None = None):
+def get_daily_category_top(start: Optional[str] = None, end: Optional[str] = None):
     con = _get_connection()
     try:
         if start and end:
@@ -306,7 +307,7 @@ def get_daily_category_top(start: str | None = None, end: str | None = None):
     finally:
         con.close()
 
-def get_king_of_streamers(start: str | None = None, end: str | None = None):
+def get_king_of_streamers(start: Optional[str] = None, end: Optional[str] = None):
     con = _get_connection()
     try:
         if start and end:
@@ -389,7 +390,7 @@ def get_new_categories():
     finally:
         con.close()
 
-def get_volatility_metrics(start: str | None = None, end: str | None = None):
+def get_volatility_metrics(start: Optional[str] = None, end: Optional[str] = None):
     con = _get_connection()
     try:
         if start and end:

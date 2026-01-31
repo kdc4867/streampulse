@@ -1,3 +1,5 @@
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException, Query
 from src.api.services import dashboard as service
 
@@ -12,8 +14,8 @@ def get_live():
 
 @router.get("/events")
 def get_events(
-    since: str | None = Query(None, description="YYYY-MM-DD, filter from this date"),
-    limit: int | None = Query(None, ge=1, le=500, description="Max rows when since is set"),
+    since: Optional[str] = Query(None, description="YYYY-MM-DD, filter from this date"),
+    limit: Optional[int] = Query(None, ge=1, le=500, description="Max rows when since is set"),
 ):
     try:
         return {"data": service.get_events(since=since, limit=limit)}
@@ -25,8 +27,8 @@ def get_events(
 def get_trend(
     category: str = Query(...),
     hours: int = Query(12, ge=1, le=720),
-    start: str | None = Query(None, description="YYYY-MM-DD"),
-    end: str | None = Query(None, description="YYYY-MM-DD"),
+    start: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    end: Optional[str] = Query(None, description="YYYY-MM-DD"),
 ):
     try:
         return {"data": service.get_trend_data(category, hours=hours, start=start, end=end)}
@@ -35,8 +37,8 @@ def get_trend(
 
 @router.get("/flash")
 def get_flash(
-    start: str | None = Query(None, description="YYYY-MM-DD"),
-    end: str | None = Query(None, description="YYYY-MM-DD"),
+    start: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    end: Optional[str] = Query(None, description="YYYY-MM-DD"),
 ):
     try:
         return {"data": service.get_flash_categories(start=start, end=end)}
@@ -46,8 +48,8 @@ def get_flash(
 
 @router.get("/daily-top")
 def get_daily_top(
-    start: str | None = Query(None, description="YYYY-MM-DD"),
-    end: str | None = Query(None, description="YYYY-MM-DD"),
+    start: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    end: Optional[str] = Query(None, description="YYYY-MM-DD"),
 ):
     try:
         return {"data": service.get_daily_category_top(start=start, end=end)}
@@ -57,8 +59,8 @@ def get_daily_top(
 
 @router.get("/king")
 def get_king(
-    start: str | None = Query(None, description="YYYY-MM-DD"),
-    end: str | None = Query(None, description="YYYY-MM-DD"),
+    start: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    end: Optional[str] = Query(None, description="YYYY-MM-DD"),
 ):
     try:
         return {"data": service.get_king_of_streamers(start=start, end=end)}
@@ -76,8 +78,8 @@ def get_new():
 
 @router.get("/volatility")
 def get_volatility(
-    start: str | None = Query(None, description="YYYY-MM-DD"),
-    end: str | None = Query(None, description="YYYY-MM-DD"),
+    start: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    end: Optional[str] = Query(None, description="YYYY-MM-DD"),
 ):
     try:
         return {"data": service.get_volatility_metrics(start=start, end=end)}
